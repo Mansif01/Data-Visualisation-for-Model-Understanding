@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic AutoML Explainer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        body { background: #f0f2f5; color: #333; }
+        header { background: #1a1a2e; color: white; padding: 1.5rem 2rem; }
+        .upload-section { background: white; padding: 1.5rem 2rem; border-bottom: 1px solid #ddd; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+        .upload-section input, .upload-section select, .upload-section button { padding: 0.5rem; border-radius: 5px; border: 1px solid #ccc; font-size: 0.9rem; }
+        .upload-section button { background: #4e79a7; color: white; border: none; cursor: pointer; font-weight: bold; }
+        .upload-section button:disabled { background: #ccc; cursor: not-allowed; }
+
+        .stats-bar { display: none; background: #e8f4f8; padding: 1rem 2rem; display: flex; gap: 2rem; font-size: 0.9rem; border-bottom: 1px solid #d0e4eb; }
+        .controls { display: none; background: white; padding: 1rem 2rem; gap: 1.5rem; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #ddd; }
+        .controls select { padding: 0.4rem; border-radius: 4px; border: 1px solid #ccc; }
+
+        .dashboard { display: none; padding: 1.5rem 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .card { background: white; border-radius: 10px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .card h2 { font-size: 1.1rem; margin-bottom: 0.3rem; }
+        .subtitle { font-size: 0.8rem; color: #888; margin-bottom: 1rem; }
+        .full-width { grid-column: 1 / -1; }
+
+        .bar-dt-simple { fill: #4e79a7; }
+        .bar-dt-complex { fill: #f28e2b; }
+        .bar-rf { fill: #59a14f; }
+        .bar-lr { fill: #e15759; }
+
+        #confusion-wrapper { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🔍 Dynamic AutoML Explainer Dashboard</h1>
+    <p>Upload a CSV, select a target, and instantly audit four machine learning models.</p>
+</header>
+
+<div class="upload-section">
+    <input type="file" id="csvFile" accept=".csv, .data, text/plain">
+
+    <label>Target Column:</label>
+    <select id="targetColSelect"><option value="">-- Upload CSV first --</option></select>
+
+    <button id="trainBtn" onclick="trainModels()">🚀 Train Models</button>
+    <span id="uploadStatus" style="font-size: 0.9rem; color: #666;">Waiting for file...</span>
+</div>
+
+<div class="stats-bar" id="statsBar" style="display: none;">
+    <span><b>Dataset:</b> <span id="stat-dataset">-</span></span>
+    <span><b>Target:</b> <span id="stat-target">-</span></span>
+    <span><b>Train Size:</b> <span id="stat-train">-</span></span>
+    <span><b>Test Size:</b> <span id="stat-test">-</span></span>
+</div>
+
+<div class="controls" id="controlsBar">
+    <span><label>Highlight model: </label>
+    <select id="modelSelect">
+        <option value="all">All Models</option>
+        <option value="Decision Tree (Simple)">Decision Tree (Simple)</option>
+        <option value="Decision Tree (Complex)">Decision Tree (Complex)</option>
+        <option value="Random Forest">Random Forest</option>
+        <option value="Logistic Regression">Logistic Regression</option>
+    </select></span>
+
+    <span><label>Feature Chart: </label>
+    <select id="featureSelect">
+        <option value="10">Top 10 features</option>
+        <option value="5">Top 5 features</option>
+        <option value="20">Top 20 features</option>
+    </select></span>
+
+    <span><label>Fairness Group By: </label>
+    <select id="groupSelect"></select></span>
+</div>
+
+<div class="dashboard" id="dashboardContent">
+    <div class="card">
+        <h2>Model Accuracy Comparison</h2>
+        <p class="subtitle">Overall accuracy on the held-out test set</p>
+        <svg id="accuracy-chart"></svg>
+    </div>
+
+    <div class="card">
+        <h2>Feature Importance</h2>
+        <p class="subtitle">Which features drive the model's decisions</p>
+        <svg id="importance-chart"></svg>
+    </div>
+
+    <div class="card full-width">
+        <h2>Model Accuracy by Demographic Group</h2>
+        <p class="subtitle">Compare where each model succeeds and fails across groups</p>
+        <svg id="group-chart"></svg>
+    </div>
+
+    <div class="card">
+        <h2>Prediction Agreement</h2>
+        <p class="subtitle">How often do all 4 models guess the exact same thing?</p>
+        <svg id="agreement-chart"></svg>
+    </div>
+
+    <div class="card">
+        <h2>Confusion Matrices</h2>
+        <p class="subtitle">True Positives, False Positives, and Errors</p>
+        <div id="confusion-wrapper"></div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
