@@ -102,7 +102,7 @@ def upload_and_train():
                 accuracy_data.append({"model": name, "accuracy": acc})
 
             # Feature Importance
-            if name != "Logistic Regression":
+            if hasattr(model, 'feature_importances_'):
                 importances = model.feature_importances_
                 for i, col in enumerate(X_encoded.columns):
                     if importances[i] > 0.01:

@@ -120,6 +120,10 @@ function updateCardLabels() {
         isRegression ? "Residuals" : "Prediction Agreement";
     document.getElementById('panel4-card-subtitle').textContent =
         isRegression ? "Error (actual − predicted) per test sample" : "How often do all 4 models guess the exact same thing?";
+    document.getElementById('group-card-title').textContent =
+    isRegression ? "Model Error by Demographic Group" : "Model Accuracy by Demographic Group";
+    document.getElementById('group-card-subtitle').textContent =
+    isRegression ? "Mean absolute error per group — lower is better" : "Compare where each model succeeds and fails across groups";
 }
 
 // Step 3: D3 Master Controller
