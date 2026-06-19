@@ -3,6 +3,7 @@
 let globalCsvData, globalAccuracyData, globalImportanceData;
 let currentTargetColumn = "";
 let targetClasses = [];
+let currentTaskType = "classification"; // "classification" | "regression"
 
 const colorScale = d3.scaleOrdinal()
     .domain(["Decision Tree (Simple)", "Decision Tree (Complex)", "Random Forest", "Logistic Regression"])
@@ -68,6 +69,7 @@ async function trainModels() {
         globalImportanceData = data.importance;
         currentTargetColumn = data.target_column;
         targetClasses = data.classes;
+        currentTaskType = data.task_type || "classification";
 
         // Update UI
         document.getElementById('stat-dataset').textContent = file.name;
@@ -81,6 +83,9 @@ async function trainModels() {
         document.getElementById('controlsBar').style.display = 'flex';
         document.getElementById('dashboardContent').style.display = 'grid';
 
+        // Swap card titles/subtitles depending on task type
+        updateCardLabels();
+
         // Set up Listeners
         d3.select("#modelSelect").on("change", updateDashboard);
         d3.select("#featureSelect").on("change", updateDashboard);
@@ -88,7 +93,7 @@ async function trainModels() {
 
         // Draw!
         updateDashboard();
-        status.textContent = `✅ Complete! Analyzed ${data.n_test} test samples.`;
+        status.textContent = `✅ Complete! Analyzed ${data.n_test} test samples. (${currentTaskType})`;
 
     } catch (err) {
         status.textContent = '❌ Network error: ' + err.message;
@@ -97,20 +102,51 @@ async function trainModels() {
     btn.textContent = '🚀 Train Models';
 }
 
+// Updates card headings so the dashboard reads correctly for either task type.
+function updateCardLabels() {
+    const isRegression = currentTaskType === "regression";
+
+    document.getElementById('accuracy-card-title').textContent =
+        isRegression ? "Model Error Comparison" : "Model Accuracy Comparison";
+    document.getElementById('accuracy-card-subtitle').textContent =
+        isRegression ? "Mean Absolute Error and R² on the held-out test set" : "Overall accuracy on the held-out test set";
+
+    document.getElementById('panel3-card-title').textContent =
+        isRegression ? "Predicted vs Actual" : "Confusion Matrices";
+    document.getElementById('panel3-card-subtitle').textContent =
+        isRegression ? "How close are predictions to the true values?" : "True Positives, False Positives, and Errors";
+
+    document.getElementById('panel4-card-title').textContent =
+        isRegression ? "Residuals" : "Prediction Agreement";
+    document.getElementById('panel4-card-subtitle').textContent =
+        isRegression ? "Error (actual − predicted) per test sample" : "How often do all 4 models guess the exact same thing?";
+}
+
 // Step 3: D3 Master Controller
 function updateDashboard() {
     const selectedModel = d3.select("#modelSelect").property("value");
     const topNFeatures = parseInt(d3.select("#featureSelect").property("value"));
     const groupBy = d3.select("#groupSelect").property("value");
 
-    drawAccuracyChart(globalAccuracyData, selectedModel);
-    drawFeatureImportance(globalImportanceData, selectedModel, topNFeatures);
-    drawGroupAccuracy(globalCsvData, groupBy, selectedModel);
-    drawAgreementChart(globalCsvData);
-    drawConfusionMatrices(globalCsvData, selectedModel);
+    if (currentTaskType === "regression") {
+        drawErrorChart(globalAccuracyData, selectedModel);
+        drawFeatureImportance(globalImportanceData, selectedModel, topNFeatures);
+        drawGroupError(globalCsvData, groupBy, selectedModel);
+        drawScatterChart(globalCsvData, selectedModel);
+        drawResidualsChart(globalCsvData, selectedModel);
+    } else {
+        drawAccuracyChart(globalAccuracyData, selectedModel);
+        drawFeatureImportance(globalImportanceData, selectedModel, topNFeatures);
+        drawGroupAccuracy(globalCsvData, groupBy, selectedModel);
+        drawAgreementChart(globalCsvData);
+        drawConfusionMatrices(globalCsvData, selectedModel);
+    }
 }
 
-// Chart 1: Accuracy
+// ===========================================================
+// CLASSIFICATION CHARTS
+// ===========================================================
+
 function drawAccuracyChart(data, highlightedModel) {
     const svg = d3.select("#accuracy-chart");
     svg.selectAll("*").remove();
@@ -143,79 +179,21 @@ function drawAccuracyChart(data, highlightedModel) {
         .style("font-size", "14px").style("font-weight", "bold");
 }
 
-// Chart 2: Features
-function drawFeatureImportance(data, highlightedModel, topN) {
-    const svg = d3.select("#importance-chart");
-    svg.selectAll("*").remove();
-
-    const modelToShow = highlightedModel === "all" ? "Random Forest" : highlightedModel;
-    if(modelToShow === "Logistic Regression") return; // Skip LR feature importances for simplicity
-
-    let filteredData = data.filter(d => d.model === modelToShow).sort((a, b) => b.importance - a.importance).slice(0, topN);
-
-    const width = 600, height = 300;
-    const margin = {top: 20, right: 30, bottom: 40, left: 200}; // Wide margin for feature names
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
-
-    svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-    const x = d3.scaleLinear().domain([0, d3.max(filteredData, d => d.importance)]).range([0, innerWidth]);
-    const y = d3.scaleBand().domain(filteredData.map(d => d.feature)).range([0, innerHeight]).padding(0.2);
-
-    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).ticks(5));
-    g.append("g").call(d3.axisLeft(y)).style("font-size", "12px");
-
-    g.selectAll(".bar").data(filteredData).enter().append("rect")
-        .attr("fill", colorScale(modelToShow))
-        .attr("y", d => y(d.feature)).attr("x", 0)
-        .attr("height", y.bandwidth()).attr("width", d => x(d.importance)).attr("rx", 3);
-}
-
-// Chart 3: Group Fairness (Uses Dynamic Target)
 function drawGroupAccuracy(data, groupBy, highlightedModel) {
-    const svg = d3.select("#group-chart");
-    svg.selectAll("*").remove();
-
     const grouped = d3.groups(data, d => d[groupBy]);
 
     const chartData = grouped.map(([groupName, records]) => {
         let result = { group: groupName, count: records.length };
         models.forEach(model => {
-            // DYNAMIC CHECK: Does Actual Target == Model Prediction?
             let correct = records.filter(r => r[currentTargetColumn] === r[model]).length;
             result[model] = correct / records.length;
         });
         return result;
     }).filter(d => d.count > 5);
 
-    const width = 1000, height = 350;
-    const margin = {top: 30, right: 20, bottom: 80, left: 60};
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
-
-    svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-    const x0 = d3.scaleBand().domain(chartData.map(d => d.group)).range([0, innerWidth]).padding(0.2);
-    const modelsToDraw = highlightedModel === "all" ? models : [highlightedModel];
-    const x1 = d3.scaleBand().domain(modelsToDraw).range([0, x0.bandwidth()]).padding(0.05);
-    const y = d3.scaleLinear().domain([0, 1]).range([innerHeight, 0]);
-
-    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x0))
-        .selectAll("text").attr("transform", "rotate(-25)").style("text-anchor", "end").style("font-size", "14px");
-    g.append("g").call(d3.axisLeft(y).tickFormat(d3.format(".0%")));
-
-    const groupSelection = g.selectAll(".group").data(chartData).enter().append("g").attr("transform", d => `translate(${x0(d.group)},0)`);
-
-    groupSelection.selectAll("rect").data(d => modelsToDraw.map(key => ({key: key, value: d[key]}))).enter().append("rect")
-        .attr("x", d => x1(d.key)).attr("y", d => y(d.value))
-        .attr("width", x1.bandwidth()).attr("height", d => innerHeight - y(d.value))
-        .attr("fill", d => colorScale(d.key)).attr("rx", 2);
+    drawGroupedBarChart("#group-chart", chartData, highlightedModel, d3.format(".0%"), [0, 1]);
 }
 
-// Chart 4: Agreement Donut
 function drawAgreementChart(data) {
     const svg = d3.select("#agreement-chart");
     svg.selectAll("*").remove();
@@ -253,12 +231,12 @@ function drawAgreementChart(data) {
         .text(d => Math.round((d.data.count / data.length) * 100) + "%");
 }
 
-// Chart 5: Dynamic Confusion Matrix
 function drawConfusionMatrices(data, highlightedModel) {
     const wrapper = d3.select("#confusion-wrapper");
     wrapper.selectAll("*").remove();
+    wrapper.style("display", "grid");
 
-    const modelsToDraw = highlightedModel === "all" ? models.slice(0,2) : [highlightedModel]; // Limit to 2 for space if "all"
+    const modelsToDraw = highlightedModel === "all" ? models.slice(0,2) : [highlightedModel];
     const classA = targetClasses[0];
     const classB = targetClasses[1] || "Other";
 
@@ -299,4 +277,229 @@ function drawConfusionMatrices(data, highlightedModel) {
         `;
         wrapper.append("div").html(matrixHTML);
     });
+}
+
+// ===========================================================
+// REGRESSION CHARTS
+// ===========================================================
+
+function drawErrorChart(data, highlightedModel) {
+    const svg = d3.select("#accuracy-chart");
+    svg.selectAll("*").remove();
+
+    const width = 600, height = 300;
+    const margin = {top: 30, right: 20, bottom: 100, left: 70};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleBand().domain(data.map(d => d.model)).range([0, innerWidth]).padding(0.3);
+    const y = d3.scaleLinear().domain([0, d3.max(data, d => d.mae) * 1.25]).range([innerHeight, 0]);
+
+    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x))
+        .selectAll("text").attr("transform", "rotate(-45)").style("text-anchor", "end").attr("dx", "-.8em").attr("dy", ".15em").style("font-size", "14px");
+    g.append("g").call(d3.axisLeft(y).ticks(5));
+
+    g.append("text").attr("x", -innerHeight/2).attr("y", -50).attr("transform", "rotate(-90)")
+        .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#666").text("Mean Absolute Error (lower is better)");
+
+    g.selectAll(".bar").data(data).enter().append("rect")
+        .attr("fill", d => colorScale(d.model))
+        .style("opacity", d => (highlightedModel === "all" || highlightedModel === d.model) ? 1 : 0.2)
+        .attr("x", d => x(d.model)).attr("y", d => y(d.mae))
+        .attr("width", x.bandwidth()).attr("height", d => innerHeight - y(d.mae)).attr("rx", 4);
+
+    g.selectAll(".label").data(data).enter().append("text")
+        .attr("x", d => x(d.model) + x.bandwidth() / 2).attr("y", d => y(d.mae) - 10)
+        .attr("text-anchor", "middle")
+        .text(d => `MAE ${d.mae.toFixed(2)} | R² ${d.r2.toFixed(2)}`)
+        .style("font-size", "11px").style("font-weight", "bold");
+}
+
+function drawGroupError(data, groupBy, highlightedModel) {
+    const grouped = d3.groups(data, d => d[groupBy]);
+
+    const chartData = grouped.map(([groupName, records]) => {
+        let result = { group: groupName, count: records.length };
+        models.forEach(model => {
+            const errors = records.map(r => Math.abs(r[currentTargetColumn] - r[model]));
+            result[model] = d3.mean(errors);
+        });
+        return result;
+    }).filter(d => d.count > 5);
+
+    const maxVal = d3.max(chartData, d => d3.max(models, m => d[m]));
+    drawGroupedBarChart("#group-chart", chartData, highlightedModel, d3.format(".2f"), [0, maxVal * 1.1]);
+}
+
+function drawGroupedBarChart(selector, chartData, highlightedModel, tickFormat, yDomain) {
+    const svg = d3.select(selector);
+    svg.selectAll("*").remove();
+
+    const width = 1000, height = 350;
+    const margin = {top: 30, right: 20, bottom: 80, left: 60};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x0 = d3.scaleBand().domain(chartData.map(d => d.group)).range([0, innerWidth]).padding(0.2);
+    const modelsToDraw = highlightedModel === "all" ? models : [highlightedModel];
+    const x1 = d3.scaleBand().domain(modelsToDraw).range([0, x0.bandwidth()]).padding(0.05);
+    const y = d3.scaleLinear().domain(yDomain).range([innerHeight, 0]);
+
+    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x0))
+        .selectAll("text").attr("transform", "rotate(-25)").style("text-anchor", "end").style("font-size", "14px");
+    g.append("g").call(d3.axisLeft(y).tickFormat(tickFormat));
+
+    const groupSelection = g.selectAll(".group").data(chartData).enter().append("g").attr("transform", d => `translate(${x0(d.group)},0)`);
+
+    groupSelection.selectAll("rect").data(d => modelsToDraw.map(key => ({key: key, value: d[key]}))).enter().append("rect")
+        .attr("x", d => x1(d.key)).attr("y", d => y(d.value))
+        .attr("width", x1.bandwidth()).attr("height", d => innerHeight - y(d.value))
+        .attr("fill", d => colorScale(d.key)).attr("rx", 2);
+}
+
+function drawScatterChart(data, highlightedModel) {
+    const wrapper = d3.select("#confusion-wrapper");
+    wrapper.selectAll("*").remove();
+    wrapper.style("display", "block");
+
+    const svgEl = wrapper.append("svg").attr("id", "scatter-chart-svg");
+
+    const width = 500, height = 400;
+    const margin = {top: 20, right: 20, bottom: 50, left: 60};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    svgEl.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+    const g = svgEl.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const modelsToDraw = highlightedModel === "all" ? models : [highlightedModel];
+
+    const allActual = data.map(d => d[currentTargetColumn]);
+    const allPred = data.flatMap(d => modelsToDraw.map(m => d[m]));
+    const domainMin = Math.min(d3.min(allActual), d3.min(allPred));
+    const domainMax = Math.max(d3.max(allActual), d3.max(allPred));
+
+    const x = d3.scaleLinear().domain([domainMin, domainMax]).range([0, innerWidth]).nice();
+    const y = d3.scaleLinear().domain([domainMin, domainMax]).range([innerHeight, 0]).nice();
+
+    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x));
+    g.append("g").call(d3.axisLeft(y));
+
+    g.append("text").attr("x", innerWidth/2).attr("y", innerHeight + 40)
+        .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#666")
+        .text(`Actual ${currentTargetColumn}`);
+    g.append("text").attr("x", -innerHeight/2).attr("y", -45).attr("transform", "rotate(-90)")
+        .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#666")
+        .text(`Predicted ${currentTargetColumn}`);
+
+    g.append("line")
+        .attr("x1", x(domainMin)).attr("y1", y(domainMin))
+        .attr("x2", x(domainMax)).attr("y2", y(domainMax))
+        .attr("stroke", "#999").attr("stroke-dasharray", "4,4");
+
+    modelsToDraw.forEach(model => {
+        // Fix for safe CSS class names (removes parentheses and spaces)
+        const safeClassName = model.replace(/[^a-zA-Z0-9]/g, '');
+
+        g.selectAll(`.dot-${safeClassName}`)
+            .data(data).enter().append("circle")
+            .attr("cx", d => x(d[currentTargetColumn]))
+            .attr("cy", d => y(d[model]))
+            .attr("r", 4)
+            .attr("fill", colorScale(model))
+            .attr("opacity", 0.6);
+    });
+}
+
+function drawResidualsChart(data, highlightedModel) {
+    const svg = d3.select("#agreement-chart");
+    svg.selectAll("*").remove();
+
+    const width = 500, height = 300;
+    const margin = {top: 20, right: 20, bottom: 50, left: 60};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const modelsToDraw = highlightedModel === "all" ? models : [highlightedModel];
+
+    const residualData = data.map((d, i) => {
+        const r = {index: i, actual: d[currentTargetColumn]};
+        modelsToDraw.forEach(m => { r[m] = d[currentTargetColumn] - d[m]; });
+        return r;
+    });
+
+    const allResiduals = residualData.flatMap(d => modelsToDraw.map(m => d[m]));
+    const maxAbs = d3.max(allResiduals.map(Math.abs));
+
+    const x = d3.scaleLinear().domain([0, data.length]).range([0, innerWidth]);
+    const y = d3.scaleLinear().domain([-maxAbs, maxAbs]).range([innerHeight, 0]).nice();
+
+    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).ticks(5));
+    g.append("g").call(d3.axisLeft(y));
+
+    g.append("line")
+        .attr("x1", 0).attr("y1", y(0)).attr("x2", innerWidth).attr("y2", y(0))
+        .attr("stroke", "#999").attr("stroke-dasharray", "4,4");
+
+    g.append("text").attr("x", innerWidth/2).attr("y", innerHeight + 40)
+        .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#666")
+        .text("Test sample index");
+    g.append("text").attr("x", -innerHeight/2).attr("y", -45).attr("transform", "rotate(-90)")
+        .attr("text-anchor", "middle").style("font-size", "12px").style("fill", "#666")
+        .text("Residual (actual − predicted)");
+
+    modelsToDraw.forEach(model => {
+        // Fix for safe CSS class names (removes parentheses and spaces)
+        const safeClassName = model.replace(/[^a-zA-Z0-9]/g, '');
+
+        g.selectAll(`.res-${safeClassName}`)
+            .data(residualData).enter().append("circle")
+            .attr("cx", d => x(d.index))
+            .attr("cy", d => y(d[model]))
+            .attr("r", 4)
+            .attr("fill", colorScale(model))
+            .attr("opacity", 0.6);
+    });
+}
+
+// ===========================================================
+// SHARED CHART
+// ===========================================================
+
+function drawFeatureImportance(data, highlightedModel, topN) {
+    const svg = d3.select("#importance-chart");
+    svg.selectAll("*").remove();
+
+    const modelToShow = highlightedModel === "all" ? "Random Forest" : highlightedModel;
+    if(modelToShow === "Logistic Regression") return;
+
+    let filteredData = data.filter(d => d.model === modelToShow).sort((a, b) => b.importance - a.importance).slice(0, topN);
+
+    const width = 600, height = 300;
+    const margin = {top: 20, right: 30, bottom: 40, left: 200};
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    svg.attr("viewBox", `0 0 ${width} ${height}`).attr("width", "100%").attr("height", "100%");
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const x = d3.scaleLinear().domain([0, d3.max(filteredData, d => d.importance)]).range([0, innerWidth]);
+    const y = d3.scaleBand().domain(filteredData.map(d => d.feature)).range([0, innerHeight]).padding(0.2);
+
+    g.append("g").attr("transform", `translate(0,${innerHeight})`).call(d3.axisBottom(x).ticks(5));
+    g.append("g").call(d3.axisLeft(y)).style("font-size", "12px");
+
+    g.selectAll(".bar").data(filteredData).enter().append("rect")
+        .attr("fill", colorScale(modelToShow))
+        .attr("y", d => y(d.feature)).attr("x", 0)
+        .attr("height", y.bandwidth()).attr("width", d => x(d.importance)).attr("rx", 3);
 }
