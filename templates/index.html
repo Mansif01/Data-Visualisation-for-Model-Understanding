@@ -79,8 +79,8 @@
 
 <div class="dashboard" id="dashboardContent">
     <div class="card">
-        <h2>Model Accuracy Comparison</h2>
-        <p class="subtitle">Overall accuracy on the held-out test set</p>
+        <h2 id="accuracy-card-title">Model Accuracy Comparison</h2>
+        <p class="subtitle" id="accuracy-card-subtitle">Overall accuracy on the held-out test set</p>
         <svg id="accuracy-chart"></svg>
     </div>
 
@@ -97,14 +97,14 @@
     </div>
 
     <div class="card">
-        <h2>Prediction Agreement</h2>
-        <p class="subtitle">How often do all 4 models guess the exact same thing?</p>
+        <h2 id="panel4-card-title">Prediction Agreement</h2>
+        <p class="subtitle" id="panel4-card-subtitle">How often do all 4 models guess the exact same thing?</p>
         <svg id="agreement-chart"></svg>
     </div>
 
     <div class="card">
-        <h2>Confusion Matrices</h2>
-        <p class="subtitle">True Positives, False Positives, and Errors</p>
+        <h2 id="panel3-card-title">Confusion Matrices</h2>
+        <p class="subtitle" id="panel3-card-subtitle">True Positives, False Positives, and Errors</p>
         <div id="confusion-wrapper"></div>
     </div>
 </div>
