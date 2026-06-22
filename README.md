@@ -11,28 +11,28 @@ Built with Flask (Python backend) and D3.js (interactive frontend).
 ### Classification Mode — Titanic Dataset
 *The dashboard after uploading a classification dataset. Accuracy bars, feature importance, and demographic fairness analysis render automatically.*
  
-![Main Dashboard — Classification](images/01-classification-main.png)
+![Main Dashboard — Classification](images/full_dashboard_classification.png)
  
 *Demographic group accuracy breakdown — each bar group represents a passenger class (Pclass 1, 2, 3), showing where each model succeeds and fails across subgroups.*
  
-![Group Fairness Chart](images/02-classification-groups.png)
+![Group Fairness Chart](images/group_classification.png)
  
 *Prediction agreement donut (how often all four models agree) alongside per-model confusion matrices.*
  
-![Agreement and Confusion Matrices](images/03-classification-confusion.png)
+![Agreement and Confusion Matrices](images/predict_classification.png)
  
-### Regression Mode — House Prices Dataset
+### Regression Mode — Bike Sharing Dataset
 *The dashboard auto-detects a continuous target and switches to regression mode — bars now show Mean Absolute Error (lower is better), with R² shown as labels.*
  
-![Error Comparison — Regression](images/04-regression-error.png)
+![Error Comparison — Regression](images/full_dashboard_regression.png)
  
 *Predicted vs Actual scatter plot per model. Points close to the dashed diagonal line indicate accurate predictions.*
  
-![Predicted vs Actual Scatter](images/05-regression-scatter.png)
+![Predicted vs Actual Scatter](images/scatter_reg.png)
  
 *Residuals chart — error (actual − predicted) per test sample. A well-behaved model has residuals scattered evenly around zero.*
  
-![Residuals Chart](images/06-regression-residuals.png)
+![Residuals Chart](images/residual_reg.png)
  
 ---
  
